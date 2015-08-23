@@ -1,0 +1,16 @@
+Versionr features
+
+- revert+conflicts
+	.mine, .base, .theirs	(not deleted by revert but should be)
+	resolve?
+- blame
+- remove/rename
+- docs
+- internal diff and merge engine
+- configurable merge/diff tools
+- cherry pick revisions?
+- switch
+- plugin architecture (and convert svn integration)
+- fix order of record creation for merge/update (probably others)
+- file attributes (executable for *nixes, hidden, ... ?)
+<>

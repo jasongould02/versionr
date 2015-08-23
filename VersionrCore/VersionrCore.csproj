@@ -1,0 +1,147 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{55C6B198-E938-427F-96A5-C1252CB06ACD}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Versionr</RootNamespace>
+    <AssemblyName>VersionrCore</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="BCrypt.Net">
+      <HintPath>..\References\BCrypt.Net.dll</HintPath>
+    </Reference>
+    <Reference Include="LZ4">
+      <HintPath>..\References\LZ4.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\References\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="protobuf-net">
+      <HintPath>..\protobuf-net\protobuf-net.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Area.cs" />
+    <Compile Include="Directives.cs" />
+    <Compile Include="FileStatus.cs" />
+    <Compile Include="LocalDB.cs" />
+    <Compile Include="LocalState\CachedRecords.cs" />
+    <Compile Include="LocalState\Configuration.cs" />
+    <Compile Include="LocalState\FileTimestamp.cs" />
+    <Compile Include="LocalState\LockingObject.cs" />
+    <Compile Include="LocalState\RemoteConfig.cs" />
+    <Compile Include="LocalState\StageOperation.cs" />
+    <Compile Include="LocalState\Workspace.cs" />
+    <Compile Include="Network\Authentication.cs" />
+    <Compile Include="Network\Client.cs" />
+    <Compile Include="Network\ClonePayload.cs" />
+    <Compile Include="Network\CompressibleAttribute.cs" />
+    <Compile Include="Network\Handshake.cs" />
+    <Compile Include="Network\NetCommand.cs" />
+    <Compile Include="Network\PushObjectQuery.cs" />
+    <Compile Include="Network\Server.cs" />
+    <Compile Include="Network\ServerConfig.cs" />
+    <Compile Include="Network\SharedNetwork.cs" />
+    <Compile Include="Network\SimpleAuth.cs" />
+    <Compile Include="Network\StartClientTransaction.cs" />
+    <Compile Include="Network\StartTransaction.cs" />
+    <Compile Include="Network\Utilities.cs" />
+    <Compile Include="Network\WebConfig.cs" />
+    <Compile Include="Network\WebService.cs" />
+    <Compile Include="ObjectStore\ChunkedChecksum.cs" />
+    <Compile Include="ObjectStore\ChunkedCompressionStreamWriter.cs" />
+    <Compile Include="ObjectStore\ChunkedDecompressionStream.cs" />
+    <Compile Include="ObjectStore\LZ4ReaderStream.cs" />
+    <Compile Include="ObjectStore\LZ4Writer.cs" />
+    <Compile Include="ObjectStore\LZHAMLegacyStream.cs" />
+    <Compile Include="ObjectStore\LZHAMReaderStream.cs" />
+    <Compile Include="ObjectStore\LZHAMWriter.cs" />
+    <Compile Include="ObjectStore\ObjectStoreBase.cs" />
+    <Compile Include="ObjectStore\StandardObjectStore.cs" />
+    <Compile Include="Objects\Alteration.cs" />
+    <Compile Include="Objects\Branch.cs" />
+    <Compile Include="Objects\BranchJournal.cs" />
+    <Compile Include="Objects\Domain.cs" />
+    <Compile Include="Objects\FormatInfo.cs" />
+    <Compile Include="Objects\Head.cs" />
+    <Compile Include="Objects\MergeInfo.cs" />
+    <Compile Include="Objects\ObjectName.cs" />
+    <Compile Include="Objects\Record.cs" />
+    <Compile Include="Objects\RecordRef.cs" />
+    <Compile Include="Objects\Snapshot.cs" />
+    <Compile Include="Objects\Version.cs" />
+    <Compile Include="Printer.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Status.cs" />
+    <Compile Include="Utilities\ChunkedStream.cs" />
+    <Compile Include="Utilities\DiffMerge.cs" />
+    <Compile Include="Utilities\FileClassifier.cs" />
+    <Compile Include="Utilities\LimitedConcurrencyScheduler.cs" />
+    <Compile Include="Utilities\LZHL.cs" />
+    <Compile Include="Utilities\DiffTool.cs" />
+    <Compile Include="Utilities\Misc.cs" />
+    <Compile Include="Utilities\MultiplatformPInvoke.cs" />
+    <Compile Include="Utilities\Murmur3.cs" />
+    <Compile Include="Utilities\RestrictedStream.cs" />
+    <Compile Include="Utilities\SQLiteExtensions.cs" />
+    <Compile Include="Utilities\SvnIntegration.cs" />
+    <Compile Include="Utilities\Symlink.cs" />
+    <Compile Include="WorkspaceDB.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\commandline-stable-1.9.71.2\src\libcmdline\CommandLine.csproj">
+      <Project>{5dea2811-2ffa-4959-830b-cad3acacabeb}</Project>
+      <Name>CommandLine</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\SQLite\SQLite.csproj">
+      <Project>{8e2f144c-b039-478d-a479-487c83cdab79}</Project>
+      <Name>SQLite</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\xxHashSharp-master\xxHashSharp\xxHashSharp.csproj">
+      <Project>{9ac2e740-aa2f-41a8-81c2-af2e182f9d16}</Project>
+      <Name>xxHashSharp</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

@@ -1,0 +1,39 @@
+{
+	"Versionr" :
+	{
+		"Ignore" :
+		{
+			"Extensions" :
+			[
+				".sdf",
+				".obj",
+				".tlog",
+				".pdb",
+				".idb",
+				".ilk",
+				".log",
+				".opensdf",
+				".ipch",
+				".suo",
+				".user",
+				".cache",
+				".DS_Store"
+			],
+			"Patterns" :
+			[
+				".*/obj/",
+				"^\\.vs/",
+				"^\\.git/",
+				"^ipch",
+				"^Debug/",
+				"/Debug/",
+				"^Release/",
+				"/Release/",
+				"lzham.*/Win32/",
+				".*\\.tlog",
+				"^x64",
+				"^lib/"
+			]
+		}
+	}
+}
