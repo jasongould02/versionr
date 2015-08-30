@@ -1,5 +1,4 @@
-langauge: csharp
+language: csharp
 solution: Versionr.sln
 script:
- - xbuild /p:Configuration=Release Versionr.sln
  - make all
