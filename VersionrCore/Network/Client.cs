@@ -434,12 +434,14 @@ namespace Versionr.Network
                             {
                                 if (SharedNetwork.IsAncestor(head.Version, x.Version.ID, sharedInfo))
                                 {
-                                    pendingMerges[branch.ID] = Guid.Empty;
+                                    if (!pendingMerges.ContainsKey(branch.ID) || SharedNetwork.IsAncestor(pendingMerges[branch.ID], x.Version.ID, sharedInfo))
+                                        pendingMerges[branch.ID] = Guid.Empty;
                                     head.Version = x.Version.ID;
                                 }
                                 else if (!SharedNetwork.IsAncestor(x.Version.ID, head.Version, sharedInfo))
                                 {
-                                    pendingMerges[branch.ID] = head.Version;
+                                    if (!pendingMerges.ContainsKey(branch.ID) || pendingMerges[branch.ID] == Guid.Empty)
+                                        pendingMerges[branch.ID] = head.Version;
                                     head.Version = x.Version.ID;
                                 }
                             }
@@ -569,7 +571,12 @@ namespace Versionr.Network
             Connected = false;
             try
             {
-                Connection = new System.Net.Sockets.TcpClient(host, port);
+                Connection = new System.Net.Sockets.TcpClient();
+                var connectionTask = Connection.ConnectAsync(Host, Port);
+                if (!connectionTask.Wait(5000))
+                {
+                    throw new Exception(string.Format("Couldn't connect to target: {0}", this.VersionrURL));
+                }
             }
             catch (Exception e)
             {
