@@ -21,6 +21,8 @@ namespace Versionr
         Copied,
         Conflict,
 		Ignored,
+        Masked,
+        Obstructed,
 
         Count
     }
@@ -87,6 +89,8 @@ namespace Versionr
                 {
                     if (Code == StatusCode.Unchanged)
                         return VersionControlRecord.Fingerprint;
+                    else if (FilesystemEntry == null)
+                        return String.Empty;
                     return FilesystemEntry.Hash;
                 }
             }
@@ -152,6 +156,7 @@ namespace Versionr
             Removed = 2,
             Renamed = 4,
             Conflicted = 8,
+            MergeInfo = 16
         }
         int UpdatedFileTimeCount = 0;
         class StatusPercentage
@@ -209,7 +214,8 @@ namespace Versionr
                 caseInsensitiveNames[x.CanonicalName.ToLowerInvariant()] = x.CanonicalName;
             MergeInputs = new List<Objects.Version>();
             Dictionary<string, StageFlags> stageInformation = new Dictionary<string, StageFlags>();
-			Dictionary<Record, StatusEntry> statusMap = new Dictionary<Record, StatusEntry>();
+            Dictionary<Record, StatusEntry> statusMap = new Dictionary<Record, StatusEntry>();
+            Dictionary<string, bool> parentIgnoredList = new Dictionary<string, bool>();
             foreach (var x in stage)
             {
                 if (x.Type == LocalState.StageOperationType.Merge)
@@ -227,6 +233,8 @@ namespace Versionr
                     ops |= StageFlags.Removed;
                 if (x.Type == LocalState.StageOperationType.Rename)
                     ops |= StageFlags.Renamed;
+                if (x.Type == LocalState.StageOperationType.MergeRecord)
+                    ops |= StageFlags.MergeInfo;
                 stageInformation[x.Operand1] = ops;
             }
             try
@@ -240,7 +248,7 @@ namespace Versionr
                         Entry snapshotRecord = null;
                         if (RestrictedPath != null)
                         {
-                            if (!x.CanonicalName.StartsWith(RestrictedPath, StringComparison.Ordinal) || x.CanonicalName == RestrictedPath)
+                            if (!x.CanonicalName.StartsWith(RestrictedPath, StringComparison.Ordinal) && x.CanonicalName != RestrictedPath)
                             {
                                 if (x.CanonicalName == ".vrmeta" && !string.IsNullOrEmpty(Workspace.PartialPath))
                                 {
@@ -274,6 +282,7 @@ namespace Versionr
                                 changed = true;
                             if (!changed && snapshotRecord.IsSymlink && snapshotRecord.SymlinkTarget != x.Fingerprint)
                                 changed = true;
+                            bool obstructed = false;
                             if (!changed && !snapshotRecord.IsDirectory && !snapshotRecord.IsSymlink)
                             {
                                 LocalState.FileTimestamp fst = Workspace.GetReferenceTime(x.CanonicalName);
@@ -282,17 +291,30 @@ namespace Versionr
                                 else
                                 {
                                     Printer.PrintDiagnostics("Computing hash for: " + x.CanonicalName);
-                                    if (snapshotRecord.Hash != x.Fingerprint)
-                                        changed = true;
-                                    else
+                                    try
                                     {
-                                        System.Threading.Interlocked.Increment(ref this.UpdatedFileTimeCount);
-                                        Workspace.UpdateFileTimeCache(x.CanonicalName, x, snapshotRecord.ModificationTime, false);
+                                        if (snapshotRecord.Hash != x.Fingerprint)
+                                            changed = true;
+                                        else
+                                        {
+                                            System.Threading.Interlocked.Increment(ref this.UpdatedFileTimeCount);
+                                            Workspace.UpdateFileTimeCache(x.CanonicalName, x, snapshotRecord.ModificationTime, false);
+                                        }
+                                    }
+                                    catch
+                                    {
+                                        changed = true;
+                                        obstructed = true;
+                                        Printer.PrintWarning("Couldn't compute hash for #b#" + x.CanonicalName + "#w#, file in use!");
                                     }
                                 }
                             }
                             if (changed == true)
+                            {
+                                if (obstructed)
+                                    return new StatusEntry() { Code = StatusCode.Obstructed, FilesystemEntry = snapshotRecord, VersionControlRecord = x, Staged = objectFlags.HasFlag(StageFlags.Recorded) };
                                 return new StatusEntry() { Code = StatusCode.Modified, FilesystemEntry = snapshotRecord, VersionControlRecord = x, Staged = objectFlags.HasFlag(StageFlags.Recorded) };
+                            }
                             else
                             {
                                 if (objectFlags.HasFlag(StageFlags.Recorded))
@@ -304,7 +326,42 @@ namespace Versionr
                         {
                             if (objectFlags.HasFlag(StageFlags.Removed))
                                 return new StatusEntry() { Code = StatusCode.Deleted, FilesystemEntry = null, VersionControlRecord = x, Staged = true };
-                            return new StatusEntry() { Code = StatusCode.Missing, FilesystemEntry = null, VersionControlRecord = x, Staged = false };
+
+                            string parentName = x.CanonicalName;
+                            bool resolved = false;
+                            while (true)
+                            {
+                                if (!parentName.Contains('/'))
+                                    break;
+                                if (parentName.EndsWith("/"))
+                                    parentName = parentName.Substring(0, parentName.Length - 1);
+                                parentName = parentName.Substring(0, parentName.LastIndexOf('/') + 1);
+                                bool ignoredInParentList = false;
+                                lock (parentIgnoredList)
+                                {
+                                    if (parentIgnoredList.TryGetValue(parentName, out ignoredInParentList))
+                                    {
+                                        if (ignoredInParentList)
+                                            resolved = true;
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        Entry parentObjectEntry = null;
+                                        snapshotData.TryGetValue(parentName, out parentObjectEntry);
+                                        if (parentObjectEntry != null && parentObjectEntry.Ignored == true)
+                                        {
+                                            parentIgnoredList[parentName] = true;
+                                            resolved = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if (resolved || (snapshotRecord != null && snapshotRecord.Ignored))
+                                return new StatusEntry() { Code = StatusCode.Masked, FilesystemEntry = snapshotRecord, VersionControlRecord = x, Staged = objectFlags.HasFlag(StageFlags.Conflicted) || objectFlags.HasFlag(StageFlags.MergeInfo) };
+                            else
+                                return new StatusEntry() { Code = StatusCode.Missing, FilesystemEntry = null, VersionControlRecord = x, Staged = false };
                         }
                     }));
                 }
@@ -359,10 +416,20 @@ namespace Versionr
                     Files++;
                 if (x.Value.Ignored)
                 {
+                    if (x.Value.IsDirectory)
+                    {
+                        if (!Map.ContainsKey(x.Value.CanonicalName))
+                        {
+                            var entry = new StatusEntry() { Code = StatusCode.Masked, FilesystemEntry = x.Value, Staged = false, VersionControlRecord = null };
+
+                            Elements.Add(entry);
+                            Map[entry.CanonicalName] = entry;
+                        }
+                    }
                     IgnoredObjects++;
                     continue;
                 }
-                if (x.Key == RestrictedPath)
+                if (x.Key == RestrictedPath && x.Key == workspace.PartialPath)
                     continue;
 
                 StageFlags objectFlags;
@@ -393,8 +460,15 @@ namespace Versionr
                         }
                         if (hashes != null)
                         {
-                            Printer.PrintDiagnostics("Hashing unversioned file: {0}", x.Key);
-                            hashes.TryGetValue(x.Value.Hash, out possibleRename);
+                            try
+                            {
+                                Printer.PrintDiagnostics("Hashing unversioned file: {0}", x.Key);
+                                hashes.TryGetValue(x.Value.Hash, out possibleRename);
+                            }
+                            catch
+                            {
+                                return new StatusEntry() { Code = StatusCode.Obstructed, FilesystemEntry = x.Value, Staged = false, VersionControlRecord = possibleRename };
+                            }
                         }
                         if (possibleRename != null)
                         {
@@ -505,7 +579,7 @@ namespace Versionr
 				{
 					foreach (var y in regexes)
 					{
-						if ((!filenames && y.IsMatch(x.CanonicalName)) || (filenames && x.FilesystemEntry?.Info != null && y.IsMatch(x.FilesystemEntry.Info.Name)))
+						if ((!filenames && y.IsMatch(x.CanonicalName)) || (filenames && x.FilesystemEntry != null && x.FilesystemEntry.Info != null && y.IsMatch(x.FilesystemEntry.Info.Name)))
 						{
 							results.Add(x);
 							break;

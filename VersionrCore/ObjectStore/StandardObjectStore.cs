@@ -157,7 +157,7 @@ namespace Versionr.ObjectStore
         private void InitializeDBTypes()
         {
             CompressionMode cmode = CompressionMode.LZHAM;
-            if (!string.IsNullOrEmpty(Owner.Directives?.DefaultCompression))
+            if (Owner.Directives != null && !string.IsNullOrEmpty(Owner.Directives.DefaultCompression))
             {
                 if (!Enum.TryParse<CompressionMode>(Owner.Directives.DefaultCompression, out cmode))
                     cmode = CompressionMode.LZHAM;
@@ -510,7 +510,8 @@ namespace Versionr.ObjectStore
                 {
                     lock (this)
                     {
-                        if (HasDataDirect(directName))
+                        List<string> ignored;
+                        if (HasDataDirect(directName, out ignored))
                             throw new Exception();
                         do
                         {
@@ -664,23 +665,42 @@ namespace Versionr.ObjectStore
             return new StandardObjectStoreTransaction();
         }
 
-        public override bool HasData(Record recordInfo)
+        public override bool HasData(Record recordInfo, out List<string> requestedData)
         {
+            requestedData = null;
             if (!recordInfo.HasData)
                 return true;
-            return HasDataDirect(GetLookup(recordInfo));
+            return HasDataDirect(GetLookup(recordInfo), out requestedData);
         }
-        public override bool HasDataDirect(string x)
+        public override bool HasDataDirect(string x, out List<string> requestedData)
         {
+            requestedData = null;
             lock (this)
             {
                 var storeData = ObjectDatabase.Find<FileObjectStoreData>(x);
                 if (storeData == null)
+                {
+                    requestedData = new List<string>();
+                    requestedData.Add(x);
                     return false;
+                }
+                if (!string.IsNullOrEmpty(storeData.DeltaBase))
+                {
+                    if (!HasDataDirect(storeData.DeltaBase, out requestedData))
+                    {
+                        return false;
+                    }
+                }
 #if SLOW_DATA_CHECK
                 if (storeData.BlobID == null)
                     return GetFileForDataID(x).Exists;
-                return BlobDatabase.Find<Blobject>(storeData.BlobID.Value) != null;
+                bool present = BlobDatabase.Find<Blobject>(storeData.BlobID.Value) != null;
+                if (present == false)
+                {
+                    requestedData = new List<string>();
+                    requestedData.Add(x);
+                }
+                return present;
 #else
                 return true;
 #endif

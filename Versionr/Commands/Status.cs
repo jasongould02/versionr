@@ -104,6 +104,8 @@ namespace Versionr.Commands
                     int index = name.LastIndexOf('/');
                     if (index != name.Length - 1)
                         name = name.Insert(index + 1, "#b#");
+                    if (name.Length == 0)
+                        name = "#q#<parent directory>##";
 					if (x.IsSymlink)
 						name += " #q# -> " + (x.FilesystemEntry != null ? x.FilesystemEntry.SymlinkTarget : x.VersionControlRecord.Fingerprint);
                     Printer.WriteLineMessage("{1}## {0}", name, GetStatus(x));
@@ -191,6 +193,9 @@ namespace Versionr.Commands
                 case StatusCode.Conflict:
                     return staged ? new Tuple<char, string>('e', "conflict")
                         : new Tuple<char, string>('e', "conflict");
+                case StatusCode.Obstructed:
+                    return staged ? new Tuple<char, string>('e', "obstructed")
+                        : new Tuple<char, string>('e', "obstructed");
                 case StatusCode.Copied:
                     return staged ? new Tuple<char, string>('s', "copied")
                         : new Tuple<char, string>('w', "copied");
@@ -200,6 +205,9 @@ namespace Versionr.Commands
                 case StatusCode.Missing:
                     return staged ? new Tuple<char, string>('e', "error")
                         : new Tuple<char, string>('w', "missing");
+                case StatusCode.Masked:
+                    return staged ? new Tuple<char, string>('c', "merged")
+                        : new Tuple<char, string>('w', "ignored");
                 case StatusCode.Modified:
                     return staged ? new Tuple<char, string>('s', "modified")
                         : new Tuple<char, string>('w', "changed");

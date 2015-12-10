@@ -50,7 +50,10 @@ namespace Versionr
         
 		[VerbOption("log", HelpText = "Prints a log of versions.")]
 		public Commands.LogVerbOptions LogVerb { get; set; }
-        
+
+		[VerbOption("lg", HelpText = "Prints a log of versions.")]
+		public Commands.LogVerbOptions LgVerb { get; set; }
+
 		[VerbOption("viewdag", HelpText = "Outputs a directed acyclic graph of version metadata.")]
 		public Commands.ViewDAGVerbOptions ViewDAGVerb { get; set; }
 
@@ -86,7 +89,13 @@ namespace Versionr
         [VerbOption("expunge", HelpText = "Deletes a version from the vault and rolls back history.")]
         public Commands.ExpungeVerbOptions ExpungeVerb { get; set; }
 
-		[HelpOption]
+        [VerbOption("mergeinfo", HelpText = "Identify branches where a commit has been merged into")]
+        public Commands.MergeInfoVerbOptions MergeInfoVerb { get; set; }
+
+        [VerbOption("rebase", HelpText = "Rebase the current node in the history to a new branch of the version DAG")]
+        public Commands.RebaseVerbOptions RebaseVerb { get; set; }
+
+        [HelpOption]
         public string GetUsage()
         {
             var help = new HelpText
@@ -145,6 +154,8 @@ namespace Versionr
 				return RemoteVerb.GetUsage();
 			else if (verb == "log")
 				return LogVerb.GetUsage();
+			else if (verb == "lg")
+				return LogVerb.GetUsage();
 			else if (verb == "behead")
 				return BeheadVerb.GetUsage();
 			else if (verb == "viewdag")
@@ -173,6 +184,10 @@ namespace Versionr
                 return StatsVerb.GetUsage();
             else if (verb == "expunge")
                 return ExpungeVerb.GetUsage();
+            else if (verb == "mergeinfo")
+                return MergeInfoVerb.GetUsage();
+            else if (verb == "rebase")
+                return RebaseVerb.GetUsage();
             return GetUsage();
         }
     }
@@ -188,7 +203,6 @@ namespace Versionr
         static void Main(string[] args)
         {
             string workingDirectoryPath = Environment.CurrentDirectory;
-
             var printerStream = new Printer.PrinterStream();
             VersionOptions initalOpts = new VersionOptions();
             CommandLine.Parser parser = new CommandLine.Parser(new Action<ParserSettings>(
@@ -232,7 +246,8 @@ namespace Versionr
             commands["push"] = new Commands.Push();
             commands["merge"] = new Commands.Merge();
 			commands["log"] = new Commands.Log();
-            commands["remote"] = new Commands.Remote();
+			commands["lg"] = new Commands.Log(true);
+			commands["remote"] = new Commands.Remote();
             commands["behead"] = new Commands.Behead();
             commands["viewdag"] = new Commands.ViewDAG();
             commands["clone"] = new Commands.Clone();
@@ -247,6 +262,8 @@ namespace Versionr
             commands["deletebranch"] = new Commands.DeleteBranch();
             commands["stats"] = new Commands.Stats();
             commands["expunge"] = new Commands.Expunge();
+            commands["mergeinfo"] = new Commands.MergeInfo();
+            commands["rebase"] = new Commands.Rebase();
 
             Console.CancelKeyPress += Console_CancelKeyPress;
             
