@@ -1,4 +1,4 @@
-![Versionr Diagram](http://cygnus-core.net/versionr-diagram.jpg)
+![Versionr Diagram](http://cygnus-core.net/versionr-diagram1.jpg)
 The Versionr Revision Control System
 ===================
 
