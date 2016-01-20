@@ -152,11 +152,41 @@ namespace Versionr
             }
         }
     }
+    public static class FileSystemInfoExt
+    {
+        public static String GetFullNameWithCorrectCase(this FileSystemInfo fileOrFolder)
+        {
+            //Check whether null to simulate instance method behavior
+            if (Object.ReferenceEquals(fileOrFolder, null)) throw new NullReferenceException();
+            //Initialize common variables
+            String myResult = GetCorrectCaseOfParentFolder(fileOrFolder.FullName);
+            return myResult;
+        }
+
+        private static String GetCorrectCaseOfParentFolder(String fileOrFolder)
+        {
+            String myParentFolder = Path.GetDirectoryName(fileOrFolder);
+            String myChildName = Path.GetFileName(fileOrFolder);
+            if (Object.ReferenceEquals(myParentFolder, null)) return fileOrFolder.TrimEnd(new char[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar });
+            if (Directory.Exists(myParentFolder))
+            {
+                //myParentFolder = GetLongPathName.Invoke(myFullName);
+                String myFileOrFolder = Directory.GetFileSystemEntries(myParentFolder, myChildName).FirstOrDefault();
+                if (!Object.ReferenceEquals(myFileOrFolder, null))
+                {
+                    myChildName = Path.GetFileName(myFileOrFolder);
+                }
+            }
+            return GetCorrectCaseOfParentFolder(myParentFolder) + Path.DirectorySeparatorChar + myChildName;
+        }
+
+    }
     public class FileStatus
     {
         public List<Entry> Entries { get; set; }
         public FileStatus(Area root, DirectoryInfo rootFolder)
         {
+            rootFolder = new DirectoryInfo(rootFolder.GetFullNameWithCorrectCase());
             Entries = GetEntryList(root, rootFolder, root.AdministrationFolder);
             int files = Entries.Where(x => !x.IsDirectory).Count();
             Printer.PrintDiagnostics("Current working directory has {0} file{1} in {2} director{3}.", files, files == 1 ? "" : "s", Entries.Count - files, (Entries.Count - files) == 1 ? "y" : "ies");
@@ -173,26 +203,53 @@ namespace Versionr
             List<Entry> result = new List<Entry>();
             if (area.InExtern(info))
                 return result;
+            bool ignoreContents = false;
             string slashedSubdirectory = subdirectory;
             if (subdirectory != string.Empty)
             {
                 if (slashedSubdirectory[slashedSubdirectory.Length - 1] != '/')
                     slashedSubdirectory += '/';
-                if (area?.Directives?.Include?.RegexPatterns != null)
+                if (area != null && area.Directives != null && area.Directives.Include != null)
                 {
                     ignoreDirectory = true;
-                    foreach (var y in area.Directives.Include.RegexPatterns)
+                    foreach (var y in area.Directives.Include.Directories)
                     {
-                        if (y.IsMatch(slashedSubdirectory))
+                        if (y.StartsWith(slashedSubdirectory, StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (slashedSubdirectory.Length <= y.Length - 1)
+                                ignoreContents = true;
+                            ignoreDirectory = false;
+                            break;
+                        }
+                        else if (slashedSubdirectory.StartsWith(y))
                         {
                             ignoreDirectory = false;
                             break;
                         }
                     }
+                    if (area.Directives.Include.RegexDirectoryPatterns != null)
+                    {
+                        foreach (var y in area.Directives.Include.RegexDirectoryPatterns)
+                        {
+                            if (y.IsMatch(slashedSubdirectory))
+                            {
+                                ignoreDirectory = false;
+                                break;
+                            }
+                        }
+                    }
                 }
-                if (area?.Directives?.Ignore?.RegexPatterns != null)
-				{
-					foreach (var y in area.Directives.Ignore.RegexPatterns)
+                if (area != null && area.Directives != null && area.Directives.Ignore != null && area.Directives.Ignore.RegexDirectoryPatterns != null)
+                {
+                    foreach (var y in area.Directives.Ignore.Directories)
+                    {
+                        if (slashedSubdirectory.StartsWith(y, StringComparison.OrdinalIgnoreCase))
+                        {
+                            ignoreDirectory = true;
+                            break;
+                        }
+                    }
+                    foreach (var y in area.Directives.Ignore.RegexDirectoryPatterns)
 					{
                         if (y.IsMatch(slashedSubdirectory))
 						{
@@ -201,8 +258,8 @@ namespace Versionr
 						}
 					}
 				}
-
-                if (area?.Directives?.Externals != null)
+                
+                if (area != null && area.Directives != null && area.Directives.Externals != null)
                 {
                     foreach (var x in area.Directives.Externals)
                     {
@@ -226,74 +283,88 @@ namespace Versionr
 			if (Utilities.Symlink.Exists(info))
 				return result;
 
-            foreach (var x in info.GetFiles())
-            {
-                if (x.Name == "." || x.Name == "..")
-                    continue;
-                string name = subdirectory == string.Empty ? x.Name : slashedSubdirectory + x.Name;
-				bool ignored = ignoreDirectory;
-                if (!ignored && area?.Directives?.Include?.RegexPatterns != null)
-                {
-                    ignored = true;
-                    foreach (var y in area.Directives.Include.RegexPatterns)
-                    {
-                        if (y.IsMatch(name))
-                        {
-                            ignored = false;
-                            break;
-                        }
-                    }
-                }
-                if (!ignored && area?.Directives?.Include?.Extensions != null)
-                {
-                    ignored = true;
-                    foreach (var y in area.Directives.Include.Extensions)
-                    {
-                        if (x.Extension.Equals(y, StringComparison.OrdinalIgnoreCase))
-                        {
-                            ignored = false;
-                            break;
-                        }
-                    }
-                }
-                if (!ignored && area?.Directives?.Ignore?.Extensions != null)
-                {
-                    foreach (var y in area.Directives.Ignore.Extensions)
-                    {
-                        if (x.Extension.Equals(y, StringComparison.OrdinalIgnoreCase))
-                        {
-							ignored = true;
-                            break;
-                        }
-                    }
-                }
-                if (!ignored && area?.Directives?.Ignore?.RegexPatterns != null)
-                {
-                    foreach (var y in area.Directives.Ignore.RegexPatterns)
-                    {
-                        if (y.IsMatch(name))
-                        {
-							ignored = true;
-                            break;
-                        }
-                    }
-                }
-                result.Add(new Entry(area, parentEntry, x, name, ignored));
-            }
             List<Task<List<Entry>>> tasks = new List<Task<List<Entry>>>();
-            foreach (var x in info.GetDirectories())
+            string prefix = string.IsNullOrEmpty(subdirectory) ? string.Empty : slashedSubdirectory;
+            foreach (var x in info.GetFileSystemInfos())
             {
-                if (x.FullName == adminFolder.FullName)
-                    continue;
-                string name = subdirectory == string.Empty ? x.Name : slashedSubdirectory + x.Name;
+                string fn = x.Name;
+                string name = prefix + fn;
+                if (x.Attributes.HasFlag(FileAttributes.Directory))
+                {
+                    if (fn == "." || fn == "..")
+                        continue;
+                    
+                    if (name == adminFolder.Name)
+                        continue;
 
-                if (Utilities.MultiArchPInvoke.IsRunningOnMono)
-                {
-                    result.AddRange(PopulateList(area, parentEntry, x, name, adminFolder, ignoreDirectory));
+#if DEBUG
+                    if (true)
+#else
+                    if (Utilities.MultiArchPInvoke.IsRunningOnMono)
+#endif
+                    {
+                        result.AddRange(PopulateList(area, parentEntry, x as DirectoryInfo, name, adminFolder, ignoreDirectory));
+                    }
+                    else
+                    {
+                        tasks.Add(Utilities.LimitedTaskDispatcher.Factory.StartNew(() => { return PopulateList(area, parentEntry, x as DirectoryInfo, name, adminFolder, ignoreDirectory); }));
+                    }
                 }
-                else
+                else if (!ignoreContents)
                 {
-                    tasks.Add(Utilities.LimitedTaskDispatcher.Factory.StartNew(() => { return PopulateList(area, parentEntry, x, name, adminFolder, ignoreDirectory); }));
+                    bool ignored = ignoreDirectory;
+                    if (!ignored && area != null && area.Directives != null && area.Directives.Include != null && area.Directives.Include.RegexFilePatterns != null)
+                    {
+                        ignored = true;
+                        foreach (var y in area.Directives.Include.RegexFilePatterns)
+                        {
+                            if (y.IsMatch(name))
+                            {
+                                ignored = false;
+                                break;
+                            }
+                        }
+                    }
+                    int lastIndex = fn.LastIndexOf('.');
+                    if (lastIndex > 0)
+                    {
+                        string ext = fn.Substring(lastIndex);
+                        if (!ignored && area != null && area.Directives != null && area.Directives.Include != null && area.Directives.Include.Extensions != null)
+                        {
+                            ignored = true;
+                            foreach (var y in area.Directives.Include.Extensions)
+                            {
+                                if (ext.Equals(y, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    ignored = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!ignored && area != null && area.Directives != null && area.Directives.Ignore != null && area.Directives.Ignore.Extensions != null)
+                        {
+                            foreach (var y in area.Directives.Ignore.Extensions)
+                            {
+                                if (ext.Equals(y, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    ignored = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (!ignored && area != null && area.Directives != null && area.Directives.Ignore != null && area.Directives.Ignore.RegexFilePatterns != null)
+                    {
+                        foreach (var y in area.Directives.Ignore.RegexFilePatterns)
+                        {
+                            if (y.IsMatch(name))
+                            {
+                                ignored = true;
+                                break;
+                            }
+                        }
+                    }
+                    result.Add(new Entry(area, parentEntry, x as FileInfo, name, ignored));
                 }
             }
             if (tasks.Count > 0)

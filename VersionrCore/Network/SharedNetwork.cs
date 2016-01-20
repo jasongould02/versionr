@@ -16,7 +16,8 @@ namespace Versionr.Network
             Versionr281,
             Versionr29,
             Versionr3,
-            Versionr31
+            Versionr31,
+            Versionr32
         }
         public static bool SupportsAuthentication(Protocol protocol)
         {
@@ -24,7 +25,7 @@ namespace Versionr.Network
                 return false;
             return true;
         }
-        public static Protocol[] AllowedProtocols = new Protocol[] { Protocol.Versionr31 };
+        public static Protocol[] AllowedProtocols = new Protocol[] { Protocol.Versionr32, Protocol.Versionr31 };
         public static Protocol DefaultProtocol
         {
             get
@@ -712,6 +713,33 @@ namespace Versionr.Network
             }
             if (filteredDeps.Count > 0)
                 RequestRecordDataUnmapped(sharedInfo, filteredDeps);
+        }
+
+        internal static HashSet<Guid> GetAncestry(Guid version, SharedNetworkInfo sharedInfo)
+        {
+            HashSet<Guid> checkedVersions = new HashSet<Guid>();
+            GetAncestryInternal(checkedVersions, version, sharedInfo);
+            return checkedVersions;
+        }
+
+        internal static void GetAncestryInternal(HashSet<Guid> checkedVersions, Guid version, SharedNetwork.SharedNetworkInfo clientInfo)
+        {
+            Guid nextVersionToCheck = version;
+            while (nextVersionToCheck != null)
+            {
+                if (checkedVersions.Contains(nextVersionToCheck))
+                    return;
+                checkedVersions.Add(nextVersionToCheck);
+                List<MergeInfo> mergeInfo;
+                Objects.Version v = FindLocalOrRemoteVersionInfo(nextVersionToCheck, clientInfo, out mergeInfo);
+                foreach (var x in mergeInfo)
+                {
+                    GetAncestryInternal(checkedVersions, x.SourceVersion, clientInfo);
+                }
+                if (!v.Parent.HasValue)
+                    return;
+                nextVersionToCheck = v.Parent.Value;
+            }
         }
 
         internal static void RequestRecordMetadata(SharedNetworkInfo sharedInfo)

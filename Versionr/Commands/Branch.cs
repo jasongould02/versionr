@@ -52,7 +52,13 @@ namespace Versionr.Commands
             {
                 return false;
             }
-            ws.Branch(localOptions.Target[0]);
+            if (System.Text.RegularExpressions.Regex.IsMatch(localOptions.Target[0], "^[A-Za-z0-9_-]+$"))
+                ws.Branch(localOptions.Target[0]);
+            else
+            {
+                Printer.PrintError("#e#Error: branch name is not valid.");
+                return false;
+            }
             return true;
         }
     }

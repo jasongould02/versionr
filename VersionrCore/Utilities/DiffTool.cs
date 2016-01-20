@@ -15,10 +15,10 @@ namespace Versionr.Utilities
 
 		public static void Diff(string baseFile, string file, string externalTool)
 		{
-			Diff(baseFile, baseFile, file, file, externalTool);
+			Diff(baseFile, baseFile, file, file, externalTool, false);
 		}
 
-		public static void Diff(string baseFile, string baseAlias, string file, string fileAlias, string externalTool)
+		public static System.Diagnostics.Process Diff(string baseFile, string baseAlias, string file, string fileAlias, string externalTool, bool nonblocking)
 		{
             System.Diagnostics.ProcessStartInfo psi;
             if (!string.IsNullOrEmpty(externalTool))
@@ -26,30 +26,34 @@ namespace Versionr.Utilities
                 string xtool = externalTool.Trim();
                 int filenameIndex = xtool.Length;
                 bool quoted = false;
+                int baseIndex = 0;
                 for (int i = 0; i < xtool.Length; i++)
                 {
                     if (xtool[i] == '"')
                     {
                         if (quoted)
                         {
-                            filenameIndex = i;
+                            filenameIndex = i + 1;
                             break;
                         }
                         else
+                        {
+                            baseIndex = 1;
                             quoted = true;
+                        }
                     }
-                    else if (xtool[i] == ' ')
+                    else if (xtool[i] == ' ' && !quoted)
                     {
-                        filenameIndex = i;
+                        filenameIndex = i + 1;
                         break;
                     }
                 }
-                string filename = xtool.Substring(0, filenameIndex);
+                string filename = xtool.Substring(baseIndex, filenameIndex - baseIndex - 1);
                 xtool = xtool.Substring(filenameIndex);
-                xtool = xtool.Replace("%base", "{0}");
-                xtool = xtool.Replace("%changed", "{1}");
-                xtool = xtool.Replace("%basename", "{2}");
-                xtool = xtool.Replace("%changedname", "{3}");
+                xtool = xtool.Replace("%basename", "\"{2}\"");
+                xtool = xtool.Replace("%changedname", "\"{3}\"");
+                xtool = xtool.Replace("%base", "\"{0}\"");
+                xtool = xtool.Replace("%changed", "\"{1}\"");
                 try
                 {
                     psi = new System.Diagnostics.ProcessStartInfo()
@@ -59,7 +63,10 @@ namespace Versionr.Utilities
                         UseShellExecute = true
                     };
                     var proc = System.Diagnostics.Process.Start(psi);
+                    if (nonblocking)
+                        return proc;
                     proc.WaitForExit();
+                    return null;
                 }
                 catch
                 {
@@ -72,7 +79,7 @@ namespace Versionr.Utilities
                     Printer.PrintMessage("Example:");
                     Printer.PrintMessage("  difftool --unified #b#%base## #b#%changed## --L1 #q#%basename## --L2 #q#%changedname##");
                 }
-                return;
+                return null;
             }
             else
             {
@@ -106,7 +113,10 @@ namespace Versionr.Utilities
                 try
                 {
                     var proc = System.Diagnostics.Process.Start(psi);
+                    if (nonblocking)
+                        return proc;
                     proc.WaitForExit();
+                    return null;
                 }
                 catch
                 {
@@ -131,36 +141,41 @@ namespace Versionr.Utilities
                 string xtool = externalTool.Trim();
                 int filenameIndex = xtool.Length;
                 bool quoted = false;
+                int baseIndex = 0;
                 for (int i = 0; i < xtool.Length; i++)
                 {
                     if (xtool[i] == '"')
                     {
                         if (quoted)
                         {
-                            filenameIndex = i;
+                            filenameIndex = i + 1;
                             break;
                         }
                         else
+                        {
+                            baseIndex = 1;
                             quoted = true;
+                        }
                     }
-                    else if (xtool[i] == ' ')
+                    else if (xtool[i] == ' ' && !quoted)
                     {
-                        filenameIndex = i;
+                        filenameIndex = i + 1;
                         break;
                     }
                 }
-                string filename = xtool.Substring(0, filenameIndex);
+                string filename = xtool.Substring(baseIndex, filenameIndex - baseIndex - 1);
                 xtool = xtool.Substring(filenameIndex);
-                xtool = xtool.Replace("%file1", "{0}");
-                xtool = xtool.Replace("%file2", "{1}");
-                xtool = xtool.Replace("%file1name", "{2}");
-                xtool = xtool.Replace("%file2name", "{3}");
+                xtool = xtool.Replace("%file1name", "\"{2}\"");
+                xtool = xtool.Replace("%file2name", "\"{3}\"");
+                xtool = xtool.Replace("%file1", "\"{0}\"");
+                xtool = xtool.Replace("%file2", "\"{1}\"");
+                xtool = xtool.Replace("%output", "\"{4}\"");
                 try
                 {
                     psi = new System.Diagnostics.ProcessStartInfo()
                     {
                         FileName = filename,
-                        Arguments = string.Format(xtool, baseFile, file, baseAlias, fileAlias),
+                        Arguments = string.Format(xtool, baseFile, file, baseAlias, fileAlias, output),
                         UseShellExecute = true
                     };
                     var proc = System.Diagnostics.Process.Start(psi);
@@ -175,6 +190,7 @@ namespace Versionr.Utilities
                     Printer.PrintMessage("  #b#%file2## - Second changed filename.");
                     Printer.PrintMessage("  #b#%file1name## - Alias for first file.");
                     Printer.PrintMessage("  #b#%file2name## - Alias for second file.");
+                    Printer.PrintMessage("  #b#%output## - Output filename.");
                     Printer.PrintMessage("Example:");
                     Printer.PrintMessage("  merge #b#%file1## #b#%file2##");
                     return false;
@@ -224,38 +240,43 @@ namespace Versionr.Utilities
                 string xtool = externalTool.Trim();
                 int filenameIndex = xtool.Length;
                 bool quoted = false;
+                int baseIndex = 0;
                 for (int i = 0; i < xtool.Length; i++)
                 {
                     if (xtool[i] == '"')
                     {
                         if (quoted)
                         {
-                            filenameIndex = i;
+                            filenameIndex = i + 1;
                             break;
                         }
                         else
+                        {
+                            baseIndex = 1;
                             quoted = true;
+                        }
                     }
-                    else if (xtool[i] == ' ')
+                    else if (xtool[i] == ' ' && !quoted)
                     {
-                        filenameIndex = i;
+                        filenameIndex = i + 1;
                         break;
                     }
                 }
-                string filename = xtool.Substring(0, filenameIndex);
+                string filename = xtool.Substring(baseIndex, filenameIndex - baseIndex - 1);
                 xtool = xtool.Substring(filenameIndex);
-                xtool = xtool.Replace("%base", "{0}");
-                xtool = xtool.Replace("%file1", "{1}");
-                xtool = xtool.Replace("%file2", "{2}");
-                xtool = xtool.Replace("%basename", "{3}");
-                xtool = xtool.Replace("%file1name", "{4}");
-                xtool = xtool.Replace("%file2name", "{5}");
+                xtool = xtool.Replace("%basename", "\"{3}\"");
+                xtool = xtool.Replace("%file1name", "\"{4}\"");
+                xtool = xtool.Replace("%file2name", "\"{5}\"");
+                xtool = xtool.Replace("%base", "\"{0}\"");
+                xtool = xtool.Replace("%file1", "\"{1}\"");
+                xtool = xtool.Replace("%file2", "\"{2}\"");
+                xtool = xtool.Replace("%output", "\"{6}\"");
                 try
                 {
                     psi = new System.Diagnostics.ProcessStartInfo()
                     {
                         FileName = filename,
-                        Arguments = string.Format(xtool, baseFile, file1, file2, baseAlias, file1Alias, file2Alias),
+                        Arguments = string.Format(xtool, baseFile, file1, file2, baseAlias, file1Alias, file2Alias, output),
                         UseShellExecute = true
                     };
                     var proc = System.Diagnostics.Process.Start(psi);
@@ -272,6 +293,7 @@ namespace Versionr.Utilities
                     Printer.PrintMessage("  #b#%basename## - Alias for base file.");
                     Printer.PrintMessage("  #b#%file1name## - Alias for first file.");
                     Printer.PrintMessage("  #b#%file2name## - Alias for second file.");
+                    Printer.PrintMessage("  #b#%output## - Output filename.");
                     Printer.PrintMessage("Example:");
                     Printer.PrintMessage("  merge #b#%file1## #b#%base## #b#%file2##");
                     return false;

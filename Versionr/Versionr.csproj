@@ -32,6 +32,7 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <Prefer32Bit>false</Prefer32Bit>
+    <UseVSHostingProcess>true</UseVSHostingProcess>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
@@ -44,6 +45,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Commands\Ahead.cs" />
     <Compile Include="Commands\BaseWorkspaceCommand.cs" />
     <Compile Include="Commands\Behead.cs" />
     <Compile Include="Commands\Clone.cs" />
@@ -52,11 +54,14 @@
     <Compile Include="Commands\Expunge.cs" />
     <Compile Include="Commands\FileBaseCommand.cs" />
     <Compile Include="Commands\FileCommand.cs" />
+    <Compile Include="Commands\Info.cs" />
     <Compile Include="Commands\ListBranch.cs" />
     <Compile Include="Commands\Log.cs" />
     <Compile Include="Commands\Merge.cs" />
+    <Compile Include="Commands\MergeInfo.cs" />
     <Compile Include="Commands\Pull.cs" />
     <Compile Include="Commands\Push.cs" />
+    <Compile Include="Commands\Rebase.cs" />
     <Compile Include="Commands\Record.cs" />
     <Compile Include="Commands\BaseCommand.cs" />
     <Compile Include="Commands\Branch.cs" />
@@ -93,8 +98,7 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>
-    </PostBuildEvent>
+    <PostBuildEvent>copy Versionr.exe vsr.exe</PostBuildEvent>
   </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
