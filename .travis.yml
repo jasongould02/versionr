@@ -1,4 +1,6 @@
-langauge: csharp
+language: csharp
+mono:
+  - latest
 solution: Versionr.sln
 script:
  - xbuild /p:Configuration=Release Versionr.sln
