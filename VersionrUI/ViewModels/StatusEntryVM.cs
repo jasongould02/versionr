@@ -43,13 +43,21 @@ namespace VersionrUI.ViewModels
             get { return _statusEntry.Staged; }
             set
             {
-                if (value)
-                    _area.RecordChanges(_statusVM.Status, new List<Status.StatusEntry>() { _statusEntry }, true, false, (se, code, b) => { _statusEntry.Code = code; _statusEntry.Staged = true; });
-                else
-                    _area.Revert(new List<Status.StatusEntry>() { _statusEntry }, false, false, false, (se, code) => { _statusEntry.Code = code; _statusEntry.Staged = false; });
-                NotifyPropertyChanged("IsStaged");
-                NotifyPropertyChanged("Code");
+                if (_statusEntry.Staged != value)
+                {
+                    if (value)
+                        _area.RecordChanges(_statusVM.Status, new List<Status.StatusEntry>() { _statusEntry }, true, false, (se, code, b) => { _statusEntry.Code = code; _statusEntry.Staged = true; });
+                    else
+                        _area.Revert(new List<Status.StatusEntry>() { _statusEntry }, false, false, false, (se, code) => { _statusEntry.Code = code; _statusEntry.Staged = false; });
+                    NotifyPropertyChanged("IsStaged");
+                    NotifyPropertyChanged("Code");
+                }
             }
+        }
+
+        public Status.StatusEntry StatusEntry
+        {
+            get { return _statusEntry; }
         }
 
         public string Name
@@ -185,8 +193,6 @@ namespace VersionrUI.ViewModels
 
         public void RevertSelected()
         {
-            bool deleteNewFile = true;
-
             if (VersionrUI.Controls.VersionrPanel.SelectedItems.OfType<StatusEntryVM>().Any(x => x.Code == StatusCode.Added || x.Code == StatusCode.Unversioned))
             {
                 MessageBoxResult result = MessageBox.Show("Do you want to delete selected files from disk?", "Delete unversioned file?", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
@@ -194,15 +200,13 @@ namespace VersionrUI.ViewModels
                     return;
                 else
                 {
-                    deleteNewFile = (result == MessageBoxResult.Yes);
-                    foreach (StatusEntryVM entry in VersionrUI.Controls.VersionrPanel.SelectedItems)
-                        _area.Revert(new List<Status.StatusEntry>() { _statusEntry }, true, false, deleteNewFile);
+                    bool deleteNewFile = (result == MessageBoxResult.Yes);
+                    _area.Revert(VersionrUI.Controls.VersionrPanel.SelectedItems.OfType<StatusEntryVM>().Select(x => x._statusEntry).ToList(), true, false, deleteNewFile);
                 }
             }
             else
             {
-                foreach (StatusEntryVM entry in VersionrUI.Controls.VersionrPanel.SelectedItems)
-                    _area.Revert(new List<Status.StatusEntry>() { _statusEntry }, true, false, false);
+                _area.Revert(VersionrUI.Controls.VersionrPanel.SelectedItems.OfType<StatusEntryVM>().Select(x => x._statusEntry).ToList(), true, false, false);
             }
             _statusVM.Refresh();
         }
