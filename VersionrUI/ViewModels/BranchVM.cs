@@ -15,6 +15,31 @@ namespace VersionrUI.ViewModels
         private AreaVM _areaVM;
         private Branch _branch;
         private ObservableCollection<VersionVM> _history = null;
+        private string _searchText;
+        private VersionVM _selectedVersion;
+        private bool _historyRefreshing = false;
+        private int _revisionLimit = 50;
+        private static Dictionary<int, string> _revisionLimitOptions = new Dictionary<int, string>()
+        {
+            { 50, "50" },
+            { 100, "100" },
+            { 150, "150" },
+            { 200, "200" },
+            { -1, "All" },
+        };
+
+        public string SearchText
+        {
+            get { return _searchText; }
+            private set
+            {
+                _searchText = value;
+                NotifyPropertyChanged("SearchText");
+                _historyRefreshing = true;
+                NotifyPropertyChanged("History");
+                _historyRefreshing = false;
+            }
+        }
 
         public BranchVM(AreaVM areaVM, Branch branch)
         {
@@ -49,10 +74,58 @@ namespace VersionrUI.ViewModels
         {
             get
             {
-                if (_history == null)
+                if (!_historyRefreshing)
                     Load(() => RefreshHistory());
+                if (!string.IsNullOrEmpty(SearchText))
+                    return FilterHistory(_history, SearchText);
                 return _history;
             }
+        }
+
+        public VersionVM SelectedVersion
+        {
+            get { return _selectedVersion; }
+            private set
+            {
+                _selectedVersion = value;
+                NotifyPropertyChanged("SelectedVersion");
+            }
+        }
+
+        public int RevisionLimit
+        {
+            get { return _revisionLimit; }
+            set
+            {
+                if (_revisionLimit != value)
+                {
+                    _revisionLimit = value;
+                    NotifyPropertyChanged("RevisionLimit");
+                    NotifyPropertyChanged("History");
+                }
+            }
+        }
+
+        public Dictionary<int, string> RevisionLimitOptions
+        {
+            get { return _revisionLimitOptions; }
+        }
+
+        private ObservableCollection<VersionVM> FilterHistory(ObservableCollection<VersionVM> history, string searchtext)
+        {
+            searchtext = searchtext.ToLower();
+            ObservableCollection<VersionVM> results = new ObservableCollection<VersionVM>();
+            foreach (VersionVM version in history)
+            {
+                if (version.Message.ToLower().Contains(searchtext) ||
+                    version.ID.ToString().ToLower().Contains(searchtext) ||
+                    version.Author.ToLower().Contains(searchtext) ||
+                    version.Timestamp.ToString().ToLower().Contains(searchtext))
+                {
+                    results.Add(version);
+                }
+            }
+            return results;
         }
 
         private object refreshLock = new object();
@@ -60,8 +133,9 @@ namespace VersionrUI.ViewModels
         {
             lock (refreshLock)
             {
+                _historyRefreshing = true;
                 var headVersion = _areaVM.Area.GetBranchHeadVersion(_branch);
-                int limit = 50; // TODO: setting?
+                int? limit = (RevisionLimit != -1) ? RevisionLimit : (int?)null;
                 List<Version> versions = _areaVM.Area.GetHistory(headVersion, limit);
 
                 MainWindow.Instance.Dispatcher.Invoke(() =>
@@ -74,6 +148,7 @@ namespace VersionrUI.ViewModels
                     foreach (Version version in versions)
                         _history.Add(new VersionVM(version, _areaVM.Area));
                     NotifyPropertyChanged("History");
+                    _historyRefreshing = false;
                 });
             }
         }

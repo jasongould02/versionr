@@ -20,10 +20,4 @@ SQLite/obj/
 SQLite/bin/
 *.opensdf
 VersionrUI/obj/
-Logr/bin/
-bin/
 bin_debug/
-Logr/obj/
-Debug/
-lib/
-Dependencies/

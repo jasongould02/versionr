@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Documents;
@@ -29,7 +30,7 @@ namespace VersionrUI.ViewModels
 
             DiffCommand = new DelegateCommand(Diff);
             LogCommand = new DelegateCommand(Log);
-            RevertCommand = new DelegateCommand(Revert);
+            RevertCommand = new DelegateCommand(RevertSelected);
         }
 
         public Versionr.StatusCode Code
@@ -71,6 +72,7 @@ namespace VersionrUI.ViewModels
             get
             {
                 FlowDocument diffPreviewDocument = new FlowDocument();
+                diffPreviewDocument.PageWidth = 10000;
 
                 if (_statusEntry.VersionControlRecord != null && !_statusEntry.IsDirectory && _statusEntry.FilesystemEntry != null && _statusEntry.Code == Versionr.StatusCode.Modified)
                 {
@@ -123,6 +125,23 @@ namespace VersionrUI.ViewModels
                     text.Inlines.Add(new Run("unversioned") { Foreground = Brushes.DarkCyan });
                     text.Inlines.Add(new Run("."));
                     diffPreviewDocument.Blocks.Add(text);
+
+                    string fileName = System.IO.Path.Combine(_area.Root.FullName, _statusEntry.CanonicalName);
+                    if (File.Exists(fileName))
+                    {
+                        using (var fs = new FileInfo(fileName).OpenText())
+                        {
+                            Paragraph content = new Paragraph();
+                            while (true)
+                            {
+                                if (fs.EndOfStream)
+                                    break;
+                                string line = fs.ReadLine().Replace("\t", "    ");
+                                content.Inlines.Add(new Run(line + Environment.NewLine));
+                            }
+                            diffPreviewDocument.Blocks.Add(content);
+                        }
+                    }
                 }
 
                 return diffPreviewDocument;
@@ -164,18 +183,27 @@ namespace VersionrUI.ViewModels
             new LogDialog(_area.Version, _area, _statusEntry.CanonicalName).ShowDialog();
         }
 
-        public void Revert()
+        public void RevertSelected()
         {
             bool deleteNewFile = true;
-            if (Code == StatusCode.Added || Code == StatusCode.Unversioned)
+
+            if (VersionrUI.Controls.VersionrPanel.SelectedItems.OfType<StatusEntryVM>().Any(x => x.Code == StatusCode.Added || x.Code == StatusCode.Unversioned))
             {
-                MessageBoxResult result = MessageBox.Show("Do you want to delete this file from disk?", "Delete unversioned file?", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                MessageBoxResult result = MessageBox.Show("Do you want to delete selected files from disk?", "Delete unversioned file?", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
                 if (result == MessageBoxResult.Cancel)
                     return;
                 else
+                {
                     deleteNewFile = (result == MessageBoxResult.Yes);
+                    foreach (StatusEntryVM entry in VersionrUI.Controls.VersionrPanel.SelectedItems)
+                        _area.Revert(new List<Status.StatusEntry>() { _statusEntry }, true, false, deleteNewFile);
+                }
             }
-            _area.Revert(new List<Status.StatusEntry>() { _statusEntry }, true, false, deleteNewFile);
+            else
+            {
+                foreach (StatusEntryVM entry in VersionrUI.Controls.VersionrPanel.SelectedItems)
+                    _area.Revert(new List<Status.StatusEntry>() { _statusEntry }, true, false, false);
+            }
             _statusVM.Refresh();
         }
 
@@ -240,7 +268,9 @@ namespace VersionrUI.ViewModels
             Region openRegion = null;
             Region last = null;
             // cleanup step
-
+            bool doCleanup = true;
+            if (!doCleanup)
+                goto Display;
             for (int i = 1; i < diff.Count - 1; i++)
             {
                 if (diff[i - 1].common == null || diff[i - 1].common.Count == 0)
@@ -308,23 +338,34 @@ namespace VersionrUI.ViewModels
                         break;
                     }
                 }
-                if (isShort)
+                if (diff[i + 1].common.Count == 1 || (diff[i + 1].common.Count == 1 && (diff[i + 1].common[0].Trim() == "{" || diff[i + 1].common[0].Trim() == "}")))
                 {
-                    if (diff[i + 1].common.Count == 1 && (diff[i + 1].common[0].Trim() == "{" || diff[i + 1].common[0].Trim() == "}"))
+                    if (i < diff.Count - 2 && (diff[i + 2].common == null || diff[i + 2].common.Count == 0))
                         isBrace = true;
                 }
-                if ((isWhitespace || isBrace) && isShort)
+                if ((isWhitespace && isShort) || isShort || isBrace)
                 {
                     var next = diff[i + 1];
-                    diff.RemoveAt(i + 1);
-                    foreach (var x in next.common)
+                    if (isBrace && next.common.Count > 1)
                     {
-                        diff[i].file1.Add(x);
-                        diff[i].file2.Add(x);
+                        // currently disabled
+                        diff[i].file1.Add(next.common[0]);
+                        diff[i].file2.Add(next.common[0]);
+                        next.common.RemoveAt(0);
                     }
-                    i--;
+                    else
+                    {
+                        diff.RemoveAt(i + 1);
+                        foreach (var x in next.common)
+                        {
+                            diff[i].file1.Add(x);
+                            diff[i].file2.Add(x);
+                        }
+                        i--;
+                    }
                 }
             }
+        Display:
             for (int i = 0; i < diff.Count; i++)
             {
                 if (regions.Count > 0)
@@ -363,12 +404,16 @@ namespace VersionrUI.ViewModels
                 }
                 if (openRegion != null && (openRegion.End1 < line0 && openRegion.End2 < line1))
                 {
-                    regions.Add(openRegion);
+                    if (regions.Count == 0 || regions[regions.Count - 1] != openRegion)
+                        regions.Add(openRegion);
                     openRegion = null;
                 }
             }
             if (openRegion != null && openRegion != last)
-                regions.Add(openRegion);
+            {
+                if (regions.Count == 0 || regions[regions.Count - 1] != openRegion)
+                    regions.Add(openRegion);
+            }
             int activeRegion = 0;
             while (activeRegion < regions.Count)
             {

@@ -902,6 +902,32 @@ namespace Versionr
                 throw new Exception();
         }
 
+        internal void ReplaceHeads(Guid key, List<Head> value)
+        {
+            Objects.Branch branch = Database.Get<Branch>(key);
+            var heads = GetBranchHeads(branch);
+
+            for (int i = value.Count; i < heads.Count; i++)
+                Database.DeleteSafe(heads[i]);
+            while (heads.Count > value.Count)
+                heads.RemoveAt(heads.Count - 1);
+
+            for (int i = 0; i < heads.Count; i++)
+            {
+                if (heads[i].Version != value[i].Version)
+                {
+                    Printer.PrintDiagnostics("Updating head of branch {0} to version {1}", branch.Name, value[i].Version);
+                    heads[i].Version = value[i].Version;
+                    Database.UpdateSafe(heads[i]);
+                }
+            }
+            for (int i = heads.Count; i < value.Count; i++)
+            {
+                Printer.PrintDiagnostics("Adding new head of branch {0}, version {1}", branch.Name, value[i].Version);
+                Database.InsertSafe(value[i]);
+            }
+        }
+
         public DirectoryInfo Root
         {
             get
@@ -1294,7 +1320,7 @@ namespace Versionr
         {
             Utilities.MultiArchPInvoke.BindDLLs();
             AdministrationFolder = adminFolder;
-            RootDirectory = AdministrationFolder.Parent;
+            RootDirectory = new System.IO.DirectoryInfo(AdministrationFolder.Parent.GetFullNameWithCorrectCase());
             AdministrationFolder.Create();
             AdministrationFolder.Attributes = FileAttributes.Directory | FileAttributes.Hidden;
         }
@@ -2027,47 +2053,79 @@ namespace Versionr
             return Database.GetMergeInfo(iD);
         }
 
+
+		private void LoadVRMeta()
+		{
+			Configuration = null;
+			FileInfo info = new FileInfo(Path.Combine(Root.FullName, ".vrmeta"));
+			if (info.Exists)
+			{
+				string data = string.Empty;
+				using (var sr = info.OpenText())
+				{
+					data = sr.ReadToEnd();
+				}
+				try
+				{
+					Configuration = Newtonsoft.Json.Linq.JObject.Parse(data);
+					Directives = LoadConfigurationElement<Directives>("Versionr");
+				}
+				catch (Exception e)
+				{
+					Printer.PrintError("#x#Error:## .vrmeta is malformed!");
+					Printer.PrintMessage(e.ToString());
+
+					if (Directives == null)
+						Directives = new Directives();
+				}
+			}
+			else
+				Directives = new Directives();
+		}
+
+		private void LoadVRUser(string path)
+		{
+			FileInfo localInfo = new FileInfo(path);
+			if (localInfo.Exists)
+			{
+				string data = string.Empty;
+				using (var sr = localInfo.OpenText())
+				{
+					data = sr.ReadToEnd();
+				}
+				try
+				{
+					var localObj = Newtonsoft.Json.Linq.JObject.Parse(data);
+					var localDirJSON = localObj["Versionr"];
+					if (localDirJSON != null)
+					{
+						var localDirectives = Newtonsoft.Json.JsonConvert.DeserializeObject<Directives>(localDirJSON.ToString());
+						if (localDirectives != null)
+						{
+							if (Directives != null)
+								Directives.Merge(localDirectives);
+							else
+								Directives = localDirectives;
+						}
+					}
+				}
+				catch (Exception e)
+				{
+					Printer.PrintError("#x#Error:## .vruser is malformed!");
+					Printer.PrintMessage(e.ToString());
+				}
+			}
+		}
+
 		private void LoadDirectives()
 		{
-            Configuration = null;
-            FileInfo info = new FileInfo(Path.Combine(Root.FullName, ".vrmeta"));
-            if (info.Exists)
-            {
-                string data = string.Empty;
-                using (var sr = info.OpenText())
-                {
-                    data = sr.ReadToEnd();
-                }
-                Configuration = Newtonsoft.Json.Linq.JObject.Parse(data);
-                Directives = LoadConfigurationElement<Directives>("Versionr");
-            }
-            else
-                Directives = new Directives();
-            FileInfo localInfo = new FileInfo(Path.Combine(Root.FullName, ".vruser"));
-            if (localInfo.Exists)
-            {
-                string data = string.Empty;
-                using (var sr = localInfo.OpenText())
-                {
-                    data = sr.ReadToEnd();
-                }
-                var localObj = Newtonsoft.Json.Linq.JObject.Parse(data);
-                var localDirJSON = localObj["Versionr"];
-                if (localDirJSON != null)
-                {
-                    var localDirectives = Newtonsoft.Json.JsonConvert.DeserializeObject<Directives>(localDirJSON.ToString());
-                    if (localDirectives != null)
-                    {
-                        if (Directives != null)
-                            Directives.Merge(localDirectives);
-                        else
-                            Directives = localDirectives;
-                    }
-                }
-            }
-        }
+			LoadVRMeta();
+			LoadVRUser(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".vruser"));
+			LoadVRUser(Path.Combine(Root.FullName, ".vruser"));
+		}
 
-        public T LoadConfigurationElement<T>(string v)
+
+		public T LoadConfigurationElement<T>(string v)
             where T : new()
         {
             var element = Configuration[v];
@@ -2434,7 +2492,7 @@ namespace Versionr
             }
         }
 
-        public void Merge(string v, bool updateMode, bool force, bool allowrecursiveMerge = false, bool reintegrate = false)
+        public void Merge(string v, bool updateMode, bool force, bool allowrecursiveMerge = false, bool reintegrate = false, bool ignoreMergeParents = false)
         {
             Objects.Version mergeVersion = null;
             Objects.Version parentVersion = null;
@@ -2460,7 +2518,7 @@ namespace Versionr
                 if (possibleBranch == null && reintegrate)
                     throw new Exception("Can't reintegrate when merging a version and not a branch.");
 
-                var parents = GetCommonParents(null, mergeVersion);
+                var parents = GetCommonParents(null, mergeVersion, ignoreMergeParents);
                 if (parents == null || parents.Count == 0)
                     throw new Exception("No common parent!");
 
@@ -2941,7 +2999,7 @@ namespace Versionr
                     if (x.Type == StageOperationType.Merge)
                     {
                         if (mergeVersionGraph == null)
-                            mergeVersionGraph = GetParentGraph(mergeVersion);
+                            mergeVersionGraph = GetParentGraph(mergeVersion, ignoreMergeParents);
                         Objects.Version stagedMergeVersion = GetVersion(new Guid(x.Operand1));
                         if (mergeVersionGraph.ContainsKey(stagedMergeVersion.ID))
                             LocalData.RemoveStageOperation(x);
@@ -2985,7 +3043,7 @@ namespace Versionr
 
         private List<TransientMergeObject> MergeCoreRecursive(Objects.Version v1, Objects.Version v2)
         {
-            var parents = GetCommonParents(v1, v2);
+            var parents = GetCommonParents(v1, v2, false);
             if (parents == null || parents.Count == 0)
                 throw new Exception("No common parent!");
 
@@ -3365,10 +3423,10 @@ namespace Versionr
             }
         }
 
-        private List<KeyValuePair<Guid, int>> GetCommonParents(Objects.Version version, Objects.Version mergeVersion)
+        private List<KeyValuePair<Guid, int>> GetCommonParents(Objects.Version version, Objects.Version mergeVersion, bool ignoreMergeParents)
         {
-            Dictionary<Guid, int> foreignGraph = GetParentGraph(mergeVersion);
-            List<KeyValuePair<Guid, int>> shared = GetSharedParentGraphMinimal(version, foreignGraph);
+            Dictionary<Guid, int> foreignGraph = GetParentGraph(mergeVersion, ignoreMergeParents);
+            List<KeyValuePair<Guid, int>> shared = GetSharedParentGraphMinimal(version, foreignGraph, ignoreMergeParents);
             shared = shared.OrderBy(x => x.Value).ToList();
             if (shared.Count == 0)
                 return null;
@@ -3379,7 +3437,7 @@ namespace Versionr
                 if (ignored.Contains(shared[i].Key))
                     continue;
                 pruned.Add(shared[i]);
-                var parents = GetParentGraph(GetVersion(shared[i].Key));
+                var parents = GetParentGraph(GetVersion(shared[i].Key), ignoreMergeParents);
                 for (int j = 0; j < shared.Count; j++)
                 {
                     if (j == i)
@@ -3391,7 +3449,7 @@ namespace Versionr
             return pruned.Where(x => !ignored.Contains(x.Key)).ToList();
         }
 
-        private List<KeyValuePair<Guid, int>> GetSharedParentGraphMinimal(Objects.Version version, Dictionary<Guid, int> foreignGraph)
+        private List<KeyValuePair<Guid, int>> GetSharedParentGraphMinimal(Objects.Version version, Dictionary<Guid, int> foreignGraph, bool ignoreMergeParents)
         {
             bool includePendingMerge = false;
             if (version == null)
@@ -3436,10 +3494,14 @@ namespace Versionr
                 {
                     if (currentNode.Parent.HasValue && !visited.ContainsKey(currentNode.Parent.Value))
                         openNodes.Push(new Tuple<Objects.Version, int>(Database.Get<Objects.Version>(currentNode.Parent), currentNodeData.Item2 + 1));
-                    foreach (var x in Database.GetMergeInfo(currentNode.ID))
+
+                    if (!ignoreMergeParents)
                     {
-                        if (!visited.ContainsKey(x.SourceVersion))
-                            openNodes.Push(new Tuple<Objects.Version, int>(Database.Get<Objects.Version>(x.SourceVersion), currentNodeData.Item2 + 1));
+                        foreach (var x in Database.GetMergeInfo(currentNode.ID))
+                        {
+                            if (!visited.ContainsKey(x.SourceVersion))
+                                openNodes.Push(new Tuple<Objects.Version, int>(Database.Get<Objects.Version>(x.SourceVersion), currentNodeData.Item2 + 1));
+                        }
                     }
                 }
             }
@@ -3456,7 +3518,7 @@ namespace Versionr
             return shared;
         }
 
-        public Dictionary<Guid, int> GetParentGraph(Objects.Version mergeVersion)
+        public Dictionary<Guid, int> GetParentGraph(Objects.Version mergeVersion, bool ignoreMergeParents)
         {
             Printer.PrintDiagnostics("Getting parent graph for version {0}", mergeVersion.ID);
             System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
@@ -3480,10 +3542,14 @@ namespace Versionr
 
                 if (currentNode.Parent.HasValue && !result.ContainsKey(currentNode.Parent.Value))
                     openNodes.Push(new Tuple<Objects.Version, int>(Database.Get<Objects.Version>(currentNode.Parent), currentNodeData.Item2 + 1));
-                foreach (var x in Database.GetMergeInfo(currentNode.ID))
+
+                if (!ignoreMergeParents)
                 {
-                    if (!result.ContainsKey(x.SourceVersion))
-                        openNodes.Push(new Tuple<Objects.Version, int>(Database.Get<Objects.Version>(x.SourceVersion), currentNodeData.Item2 + 1));
+                    foreach (var x in Database.GetMergeInfo(currentNode.ID))
+                    {
+                        if (!result.ContainsKey(x.SourceVersion))
+                            openNodes.Push(new Tuple<Objects.Version, int>(Database.Get<Objects.Version>(x.SourceVersion), currentNodeData.Item2 + 1));
+                    }
                 }
             }
             sw.Stop();
@@ -3526,7 +3592,7 @@ namespace Versionr
 
         public void Branch(string v)
         {
-            if (!System.Text.RegularExpressions.Regex.IsMatch(v, "^[A-Za-z0-9_-]+$"))
+            if (!System.Text.RegularExpressions.Regex.IsMatch(v, "^\\w+$"))
                 throw new Exception("Invalid branch name.");
             Printer.PrintDiagnostics("Checking for existing branch \"{0}\".", v);
             var branch = GetBranchByName(v).FirstOrDefault();
@@ -3718,6 +3784,8 @@ namespace Versionr
             List<Objects.Version> allVersions = null;
             if (limit.HasValue && limit.Value > 0)
                 allVersions = allVersionsList.Reverse<Objects.Version>().Take(limit.Value).ToList();
+            else
+                allVersions = allVersionsList;
             DAG <Objects.Version, Guid> result = new DAG<Objects.Version, Guid>();
             foreach (var x in allVersions)
             {
@@ -3787,8 +3855,9 @@ namespace Versionr
         {
             return Database.GetRecords(v);
         }
-
-		private static IEnumerable<Record> CheckoutOrder(List<Record> targetRecords)
+        
+        private static IEnumerable<T> CheckoutOrder<T>(IList<T> targetRecords)
+            where T : ICheckoutOrderable
 		{
 			// TODO: .vrmeta first.
 			foreach (var x in targetRecords.Where(x => x.IsDirective))
@@ -3913,6 +3982,8 @@ namespace Versionr
             int deletionCount = 0;
             foreach (var x in DeletionOrder(recordsToDelete))
             {
+                if (!Included(x.CanonicalName))
+                    continue;
                 if (canonicalNames.Contains(x.CanonicalName))
                     continue;
 
@@ -4302,70 +4373,65 @@ namespace Versionr
         {
             List<Status.StatusEntry> directoryDeletionList = new List<Status.StatusEntry>();
             List<Status.StatusEntry> deletionList = new List<Status.StatusEntry>();
-			foreach (var x in targets)
-            {
-                if (!Included(x.CanonicalName))
-                    continue;
-                if (interactive && (x.Staged || (revertRecord && x.Code != StatusCode.Unchanged)))
+
+            Dictionary<string, Record> recordMap = new Dictionary<string, Record>();
+            foreach (var x in Database.Records)
+                recordMap[x.CanonicalName] = x;
+
+            LocalData.BeginTransaction();
+			try
+			{
+                foreach (var x in CheckoutOrder(targets))
                 {
-                    Printer.PrintMessageSingleLine("{1} object #b#{0}##", x.CanonicalName, (revertRecord && x.Code == StatusCode.Modified) ? "#e#Revert##" : "#b#Unrecord##");
-                    bool skip = false;
-                    bool stop = false;
-                    while (true)
-                    {
-                        Printer.PrintMessageSingleLine(" [(y)es, (n)o, (s)top]? ");
-                        string input = System.Console.ReadLine();
-                        if (input.StartsWith("y", StringComparison.OrdinalIgnoreCase))
-                            break;
-                        if (input.StartsWith("s", StringComparison.OrdinalIgnoreCase))
-                        {
-                            stop = true;
-                            break;
-                        }
-                        if (input.StartsWith("n", StringComparison.OrdinalIgnoreCase))
-                        {
-                            skip = true;
-                            break;
-                        }
-                    }
-                    if (stop)
-                        break;
-                    if (skip)
+                    if (!Included(x.CanonicalName))
                         continue;
-                }
-				LocalData.BeginTransaction();
-				try
-				{
-					foreach (var y in LocalData.StageOperations)
-					{
-						if (y.Operand1 == x.CanonicalName)
-						{
-							LocalData.Delete(y);
-						}
-					}
-					LocalData.Commit();
-				}
-				catch (Exception e)
-				{
-					LocalData.Rollback();
-					throw new Exception("Unable to remove stage operations!", e);
-                }
-                if (x.Staged == true)
-                {
-                    if (callback != null)
+                    if (interactive && (x.Staged || (revertRecord && x.Code != StatusCode.Unchanged)))
                     {
-                        callback(x,
-                            (x.Code == StatusCode.Deleted ? StatusCode.Missing :
-                            (x.Code == StatusCode.Added ? StatusCode.Unversioned :
-                            x.Code)));
+                        Printer.PrintMessageSingleLine("{1} object #b#{0}##", x.CanonicalName, (revertRecord && x.Code == StatusCode.Modified) ? "#e#Revert##" : "#b#Unrecord##");
+                        bool skip = false;
+                        bool stop = false;
+                        while (true)
+                        {
+                            Printer.PrintMessageSingleLine(" [(y)es, (n)o, (s)top]? ");
+                            string input = System.Console.ReadLine();
+                            if (input.StartsWith("y", StringComparison.OrdinalIgnoreCase))
+                                break;
+                            if (input.StartsWith("s", StringComparison.OrdinalIgnoreCase))
+                            {
+                                stop = true;
+                                break;
+                            }
+                            if (input.StartsWith("n", StringComparison.OrdinalIgnoreCase))
+                            {
+                                skip = true;
+                                break;
+                            }
+                        }
+                        if (stop)
+                            break;
+                        if (skip)
+                            continue;
                     }
-                }
-                else if (x.Code == StatusCode.Conflict)
-                {
-                    //Printer.PrintMessage("Marking {0} as resolved.", x.CanonicalName);
-                    LocalData.BeginTransaction();
-                    try
+                    foreach (var y in LocalData.StageOperations)
                     {
+                        if (y.Operand1 == x.CanonicalName)
+                        {
+                            LocalData.Delete(y);
+                        }
+                    }
+                    if (x.Staged == true)
+                    {
+                        if (callback != null)
+                        {
+                            callback(x,
+                                (x.Code == StatusCode.Deleted ? StatusCode.Missing :
+                                (x.Code == StatusCode.Added ? StatusCode.Unversioned :
+                                x.Code)));
+                        }
+                    }
+                    else if (x.Code == StatusCode.Conflict)
+                    {
+                        //Printer.PrintMessage("Marking {0} as resolved.", x.CanonicalName);
                         foreach (var y in LocalData.StageOperations)
                         {
                             if (y.Type == StageOperationType.Conflict && y.Operand1 == x.CanonicalName)
@@ -4373,35 +4439,119 @@ namespace Versionr
                                 LocalData.Delete(y);
                             }
                         }
-                        LocalData.Commit();
+                        if (callback != null)
+                            callback(x, StatusCode.Modified);
                     }
-                    catch (Exception e)
-                    {
-                        LocalData.Rollback();
-                        throw new Exception("Unable to remove stage operations!", e);
-                    }
-                    if (callback != null)
-                        callback(x, StatusCode.Modified);
-                }
 
-				if (revertRecord && x.Code != StatusCode.Unchanged)
-				{
-					Record rec = Database.Records.Where(z => z.CanonicalName == x.CanonicalName).FirstOrDefault();
-					if (rec != null)
-					{
-						Printer.PrintMessage("Reverted: #b#{0}##", x.CanonicalName);
-						RestoreRecord(rec, DateTime.UtcNow);
-					}
-                    if (deleteNewFiles &&
-                        (x.Code == StatusCode.Unversioned || x.Code == StatusCode.Copied || x.Code == StatusCode.Renamed))
+                    if (revertRecord && x.Code != StatusCode.Unchanged)
                     {
-                        if (x.FilesystemEntry.IsDirectory)
-                            directoryDeletionList.Add(x);
-                        else
-                            deletionList.Add(x);
+                        Record rec = null;
+                        recordMap.TryGetValue(x.CanonicalName, out rec);
+                        if (rec != null)
+                        {
+                            Printer.PrintMessage("Reverted: #b#{0}##", x.CanonicalName);
+                            RestoreRecord(rec, DateTime.UtcNow);
+                        }
+                        if (deleteNewFiles &&
+                            (x.Code == StatusCode.Unversioned || x.Code == StatusCode.Added || x.Code == StatusCode.Copied || x.Code == StatusCode.Renamed))
+                        {
+                            if (x.FilesystemEntry.IsDirectory)
+                                directoryDeletionList.Add(x);
+                            else
+                                deletionList.Add(x);
+                        }
                     }
-				}
-			}
+                }
+                LocalData.Commit();
+            }
+            catch (Exception e)
+            {
+                LocalData.Rollback();
+                throw new Exception("Unable to remove stage operations!", e);
+            }
+            foreach (var x in deletionList)
+            {
+                Printer.PrintMessage("#e#Deleted:## #b#{0}##", x.CanonicalName);
+                x.FilesystemEntry.Info.Delete();
+            }
+            foreach (var x in directoryDeletionList.OrderByDescending(x => x.CanonicalName.Length))
+            {
+                Printer.PrintMessage("#e#Removed:## #b#{0}##", x.CanonicalName);
+                x.FilesystemEntry.DirectoryInfo.Delete();
+            }
+        }
+
+        public void Resolve(IList<Status.StatusEntry> targets, Action<Versionr.Status.StatusEntry, StatusCode> callback = null)
+        {
+            List<Status.StatusEntry> directoryDeletionList = new List<Status.StatusEntry>();
+            List<Status.StatusEntry> deletionList = new List<Status.StatusEntry>();
+
+            Dictionary<string, Record> recordMap = new Dictionary<string, Record>();
+            foreach (var x in Database.Records)
+                recordMap[x.CanonicalName] = x;
+
+            LocalData.BeginTransaction();
+            try
+            {
+                foreach (var x in CheckoutOrder(targets))
+                {
+                    if (!Included(x.CanonicalName))
+                        continue;
+                    foreach (var y in LocalData.StageOperations)
+                    {
+                        if (y.Operand1 == x.CanonicalName && y.Type == StageOperationType.Conflict)
+                        {
+                            LocalData.Delete(y);
+                            Printer.PrintMessage("#g#Resolved:## {0}", x.CanonicalName);
+                            FileInfo mineFile = new FileInfo(GetRecordPath(x.CanonicalName + ".mine"));
+                            FileInfo theirsFile = new FileInfo(GetRecordPath(x.CanonicalName + ".theirs"));
+                            FileInfo baseFile = new FileInfo(GetRecordPath(x.CanonicalName + ".base"));
+                            if (mineFile.Exists)
+                            {
+                                Printer.PrintMessage("#w#Deleting:## {0}", GetLocalCanonicalName(mineFile.FullName));
+                                try
+                                {
+                                    mineFile.Delete();
+                                }
+                                catch (Exception e)
+                                {
+                                    Printer.PrintMessage("Couldn't delete: {0}", mineFile.FullName);
+                                }
+                            }
+                            if (theirsFile.Exists)
+                            {
+                                Printer.PrintMessage("#w#Deleting:## {0}", GetLocalCanonicalName(theirsFile.FullName));
+                                try
+                                {
+                                    theirsFile.Delete();
+                                }
+                                catch (Exception e)
+                                {
+                                    Printer.PrintMessage("Couldn't delete: {0}", theirsFile.FullName);
+                                }
+                            }
+                            if (baseFile.Exists)
+                            {
+                                Printer.PrintMessage("#w#Deleting:## {0}", GetLocalCanonicalName(baseFile.FullName));
+                                try
+                                {
+                                    baseFile.Delete();
+                                }
+                                catch (Exception e)
+                                {
+                                    Printer.PrintMessage("Couldn't delete: {0}", baseFile.FullName);
+                                }
+                            }
+                        }
+                    }
+                }
+                LocalData.Commit();
+            }
+            catch (Exception e)
+            {
+                LocalData.Rollback();
+                throw new Exception("Unable to remove stage operations!", e);
+            }
             foreach (var x in deletionList)
             {
                 Printer.PrintMessage("#e#Deleted:## #b#{0}##", x.CanonicalName);
@@ -4585,11 +4735,14 @@ namespace Versionr
                                                     {
                                                         if (record == null)
                                                         {
-                                                            Printer.PrintMessage("Removed (ignored locally): #b#{0}##", x.CanonicalName);
-                                                            Alteration localAlteration = new Alteration();
-                                                            localAlteration.Type = AlterationType.Delete;
-                                                            localAlteration.PriorRecord = x.VersionControlRecord.Id;
-                                                            alterations.Add(localAlteration);
+                                                            if (x.VersionControlRecord != null)
+                                                            {
+                                                                Printer.PrintMessage("Removed (ignored locally): #b#{0}##", x.CanonicalName);
+                                                                Alteration localAlteration = new Alteration();
+                                                                localAlteration.Type = AlterationType.Delete;
+                                                                localAlteration.PriorRecord = x.VersionControlRecord.Id;
+                                                                alterations.Add(localAlteration);
+                                                            }
                                                             break;
                                                         }
                                                         else
@@ -4887,7 +5040,7 @@ namespace Versionr
 
         public void RestoreRecord(Record rec, DateTime referenceTime, string overridePath = null, ConcurrentQueue<FileTimestamp> updatedTimestamps = null, Action<RecordUpdateType, string, Objects.Record> feedback = null)
         {
-			if (rec.IsSymlink)
+            if (rec.IsSymlink)
 			{
                 string path = GetRecordPath(rec);
 				if (!Utilities.Symlink.Exists(path) || Utilities.Symlink.GetTarget(path) != rec.Fingerprint)
@@ -4903,7 +5056,30 @@ namespace Versionr
 
 			if (rec.IsDirectory)
             {
-                DirectoryInfo directory = new DirectoryInfo(GetRecordPath(rec));
+                string recPath = GetRecordPath(rec);
+                DirectoryInfo directory = new DirectoryInfo(recPath);
+                string fullCasedPath = directory.GetFullNameWithCorrectCase();
+                if (MultiArchPInvoke.RunningPlatform == Platform.Windows)
+                    recPath = recPath.Replace('/', '\\');
+                if (fullCasedPath != recPath)
+                {
+                    // Fix for possible parent renames being broken too
+                    System.IO.DirectoryInfo casedInfo = new DirectoryInfo(fullCasedPath);
+                    System.IO.DirectoryInfo currentDirectory = directory;
+                    while (true)
+                    {
+                        if (string.Equals(casedInfo.FullName, Root.FullName, StringComparison.OrdinalIgnoreCase))
+                            break;
+                        if (casedInfo.Name != currentDirectory.Name)
+                        {
+                            string tempName = Path.Combine(casedInfo.Parent.FullName, currentDirectory.Name + "_" + System.IO.Path.GetRandomFileName());
+                            System.IO.Directory.Move(casedInfo.FullName, tempName);
+                            System.IO.Directory.Move(tempName, currentDirectory.FullName);
+                        }
+                        currentDirectory = currentDirectory.Parent;
+                        casedInfo = casedInfo.Parent;
+                    }
+                }
                 if (!directory.Exists)
                 {
                     if (feedback == null)
@@ -4918,6 +5094,12 @@ namespace Versionr
             FileInfo dest = overridePath == null ? new FileInfo(GetRecordPath(rec)) : new FileInfo(overridePath);
             if (overridePath == null && dest.Exists)
             {
+                FileInfo caseCheck = dest.GetCorrectCase();
+                if (caseCheck.Name != dest.Name)
+                {
+                    caseCheck.MoveTo(Path.GetRandomFileName());
+                    caseCheck.MoveTo(dest.Name);
+                }
                 FileTimestamp fst = GetReferenceTime(rec.CanonicalName);
 
                 if (dest.LastWriteTimeUtc == fst.LastSeenTime && dest.Length == rec.Size && rec.DataIdentifier == fst.DataIdentifier)
@@ -4959,6 +5141,7 @@ namespace Versionr
         Retry:
             try
             {
+                dest.Directory.Create();
                 if (rec.Size == 0)
                 {
                     using (var fs = dest.Create()) { }

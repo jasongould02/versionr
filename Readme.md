@@ -1,4 +1,4 @@
-![Versionr Diagram](http://cygnus-core.net/versionr-diagram1.jpg)
+![Versionr Diagram](http://cygnus-core.net/versionr-diagram.jpg)
 The Versionr Revision Control System
 ===================
 
@@ -270,10 +270,6 @@ versionr pull -b otherbranch
 versionr pull -u remotename
 // Get versions from a server that isn't the default and isn't a named remote
 versionr pull -u --remote otherhostname:7777
-// Check to see if you are ahead or behind the server (using the default remote)
-versionr ahead
-// List all branches on the server
-versionr pull -l
 ```
 **Putting data into the server**
 ```
